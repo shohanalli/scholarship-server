@@ -5,9 +5,39 @@ const app = express();
 require('dotenv').config()
 const port = process.env.port || 3000
 
+
+const admin = require("firebase-admin");
+const serviceAccount = require("./scholarship.json");
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
 //middleware
 app.use(express.json());
 app.use(cors());
+const verifyToken = async(req, res, next) =>{
+ const token = req.headers?.authorization;
+  //  console.log('after verify', token)
+  if(!token){
+    return res.status(401).send({message: 'unauthorize access'})
+  }
+  try{
+    const idToken = token.split(' ')[1];
+    const decoded = await admin.auth().verifyIdToken(idToken)
+    req.decoded_email = decoded.email
+    console.log('after decoded : ', decoded);
+
+     next()
+  }
+catch (err){
+ return res.status(401).send({message: 'unauthorized access'})
+}
+
+}
+
+
+
+
 
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.11tuu0x.mongodb.net/?appName=Cluster0`;
@@ -27,6 +57,24 @@ async function run() {
     const db = client.db('ScholarStream');
     const scholarshipsCollection = db.collection('scholarships');
     const usersCollection = db.collection('users');
+
+
+    //send user data mongodb with fairbase
+    app.post('/users', async(req,res)=>{
+     const user = req.body;
+      user.role = 'user';
+      user.createAt = new Date();
+      const email = user.email
+        const userExist = await usersCollection.findOne({email})
+          if(userExist){
+            return res.send({message : 'user already exist'})
+          }
+      const result = await usersCollection.insertOne(user);
+      res.send(result);
+
+    })
+
+
 
 
 
