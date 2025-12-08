@@ -53,12 +53,10 @@ async function run() {
     const db = client.db('ScholarStream');
     const scholarshipsCollection = db.collection('scholarships');
     const usersCollection = db.collection('users');
-
-
     //send user data mongodb with fairbase
     app.post('/users', async(req,res)=>{
      const user = req.body;
-      user.role = 'user';
+      user.role = 'student';
       user.createAt = new Date();
       const email = user.email
         const userExist = await usersCollection.findOne({email})
@@ -74,9 +72,14 @@ async function run() {
 
 
 
-    //schollerShip Api
+    //schollerShip Api for home and all Scholarship page
     app.get('/scholarships', async(req,res)=>{
-
+      try{
+        const result = await scholarshipsCollection.find().sort({PostDate: -1, ApplicationFees: 1}).toArray();
+        res.send(result)
+      }catch(err){
+        res.send('Something wrong scholarship Api');
+      }
     })
 
     app.post('/scholarships', async(req,res)=>{
