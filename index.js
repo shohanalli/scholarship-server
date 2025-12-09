@@ -1,12 +1,11 @@
+require('dotenv').config()
 const express = require('express')
 const cors = require('cors');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express();
-const stripe = require('stripe')(process.env.STIPE_SECRET);
-require('dotenv').config()
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
 const port = process.env.port || 3000
-
-
 const admin = require("firebase-admin");
 const serviceAccount = require("./scholarship.json");
 admin.initializeApp({
@@ -128,21 +127,22 @@ app.post('/applications', async(req,res)=>{
     applicationData.applicationId = applicationId.toString();
     //application collection data save to db
     const applicationResult = await applicationsCollection.insertOne(applicationData);
-    //payment collection save to payment
-    const paymentData = {
-      applicationId: applicationId.toString(),
-      userEmail: applicationData.userEmail,
-      amount: applicationData.applicationFees,
-      scholarshipId: applicationData.scholarshipId,
-      scholarshipName: applicationData.scholarshipName,
-      paymentStatus: "unpaid",
-      status: 'pending',
-      createdAt: new Date()
-    };
-    const paymentResult = await paymentsCollection.insertOne(paymentData);
+    // payment collection save to payment
+    // const paymentData = {
+    //   applicationId: applicationId.toString(),
+    //   userEmail: applicationData.userEmail,
+    //   userName: applicationData.userName,
+    //   amount: applicationData.applicationFees,
+    //   scholarshipId: applicationData.scholarshipId,
+    //   scholarshipName: applicationData.scholarshipName,
+    //   paymentStatus: "unpaid",
+    //   status: 'pending',
+    //   createdAt: new Date()
+    // };
+    // const paymentResult = await paymentsCollection.insertOne(paymentData);
 
 
-    res.send(applicationResult, paymentResult );
+    res.send(applicationResult );
   }catch(err){
         res.send('Something wrong applicationsCollection post data');
       };
@@ -157,8 +157,79 @@ app.post('/applications', async(req,res)=>{
       const result = await scholarshipsCollection.findOne(query);
       res.send(result)
     })
+    //##############Payment  checkout with stripe***************************
+app.post('/create-checkout-section', async (req, res) => {
+  try {
+    const paymentInfo = req.body;
+    const amount = parseInt(paymentInfo.applicationFees) * 100;
 
+    const session = await stripe.checkout.sessions.create({
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            unit_amount: amount,
+            product_data: {
+              name: paymentInfo.scholarshipName,
+            },
+          },
+          quantity: 1,
+        },
+      ],
+      metadata: {
+        scholarshipName: paymentInfo.scholarshipName,
+        scholarshipId: paymentInfo.scholarshipId,
+        userEmail: paymentInfo.userEmail,
+      },
+      customer_email: paymentInfo.userEmail,
+      mode: 'payment',
+    success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancel`,
+    });
 
+    res.send({ url: session.url });
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("Stripe checkout creation failed");
+  }
+});
+////Payment success
+app.patch('/payment-success', async(req,res)=>{
+  const sessionId = req.query.session_id;
+   const session = await stripe.checkout.sessions.retrieve(sessionId);
+  //  console.log(session)
+ 
+   const trackingId = session.metadata.tracking;
+   if(session.payment_status === 'paid'){ 
+    const id = session.metadata.parcelId;
+    const query = { _id: new ObjectId(id)}
+    const update ={
+      $set:{
+        paymentStatus: 'paid',
+      }
+    }
+    const result = await parcelCollection.updateOne(query, update)
+    const payment = {
+      amount: session.amount_total/100,
+      currency: session.currency,
+      customerEmail: session.customer_email || session.metadata.senderEmail || "example@get.com",
+      parcelName: session.metadata.parcelName,
+      parcelId: session.metadata.parcelId,
+      transactionId: session.payment_intent,
+      paymentStatus: session.payment_status,
+      paidAt: new Date(),
+      trackingId: trackingId
+      
+    }
+      
+      
+
+    
+
+   }
+
+  return res.send({success: false})
+})
 
 
 
