@@ -1,7 +1,8 @@
 const express = require('express')
 const cors = require('cors');
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express();
+const stripe = require('stripe')(process.env.STIPE_SECRET);
 require('dotenv').config()
 const port = process.env.port || 3000
 
@@ -53,6 +54,10 @@ async function run() {
     const db = client.db('ScholarStream');
     const scholarshipsCollection = db.collection('scholarships');
     const usersCollection = db.collection('users');
+    const applicationsCollection = db.collection('applications')
+    const paymentsCollection = db.collection('payments')
+
+    //######################user related api ******************
     //send user data mongodb with fairbase
     app.post('/users', async(req,res)=>{
      const user = req.body;
@@ -66,30 +71,92 @@ async function run() {
       const result = await usersCollection.insertOne(user);
       res.send(result);
 
-    })
+    });
+    //find user role with email
+    app.get('/users/:email/role', async(req, res)=>{
+      const email = req.params.email
+      const query = {email}
+      const user = await usersCollection.findOne(query)
+      res.send({role : user?.role || 'student'})
+
+    });
 
 
 
 
 
-    //schollerShip Api for home and all Scholarship page
+
+
+//######################Scholarship related api ******************
+
+ //schollerShip Api for home and all Scholarship page
     app.get('/scholarships', async(req,res)=>{
       try{
-        const result = await scholarshipsCollection.find().sort({PostDate: -1, ApplicationFees: 1}).toArray();
+        const result = await scholarshipsCollection.find().sort({ApplicationFees: 1 , PostDate: -1 }).toArray();
         res.send(result)
       }catch(err){
         res.send('Something wrong scholarship Api');
       }
+    });
+//api for scholarship details page
+    app.get('/scholarships/:id', async(req,res)=>{
+      try{
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id)}
+
+        const result = await scholarshipsCollection.findOne(query);
+        res.send(result)
+      }catch(err){
+        res.send('Something wrong scholarship details Api');
+      }
+    });
+
+
+
+
+
+
+
+
+//######################Applications Collection related api ******************
+
+//Applications and payment collection send data in database&&&&&
+app.post('/applications', async(req,res)=>{
+  try{
+    const applicationData = req.body;
+    const applicationId = new ObjectId();
+    applicationData.applicationId = applicationId.toString();
+    //application collection data save to db
+    const applicationResult = await applicationsCollection.insertOne(applicationData);
+    //payment collection save to payment
+    const paymentData = {
+      applicationId: applicationId.toString(),
+      userEmail: applicationData.userEmail,
+      amount: applicationData.applicationFees,
+      scholarshipId: applicationData.scholarshipId,
+      scholarshipName: applicationData.scholarshipName,
+      paymentStatus: "unpaid",
+      status: 'pending',
+      createdAt: new Date()
+    };
+    const paymentResult = await paymentsCollection.insertOne(paymentData);
+
+
+    res.send(applicationResult, paymentResult );
+  }catch(err){
+        res.send('Something wrong applicationsCollection post data');
+      };
+});
+
+
+//######################### Payment related api**********************
+    // get one data for payment
+    app.get('/scholarships/payment/:scholarId', async(req,res)=>{
+      const id = req.params.scholarId;
+      const query = { _id: new ObjectId(id)}
+      const result = await scholarshipsCollection.findOne(query);
+      res.send(result)
     })
-
-    app.post('/scholarships', async(req,res)=>{
-
-    })
-
-
-
-
-
 
 
 
@@ -109,14 +176,9 @@ async function run() {
   }
 }
 run().catch(console.dir);
-
-
-
-
 app.get('/', (req, res) => {
   res.send('Assignment 11')
 })
-
 app.listen(port, () => {
   console.log(`Example app listening on port ${port}`)
 })
