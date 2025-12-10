@@ -162,15 +162,37 @@ app.post('/applications', async(req,res)=>{
       };
 });
 
+///create application get api 
+app.get('/applications', async(req, res)=>{
+  const query = {}
+  const { email } = req.query;
+  if(email){
+    query.userEmail = email;
+  }
+  const result = await applicationsCollection.find(query).sort({applicationDate: -1}).toArray();
+  res.send(result);
+})
+
+
+
+
+
+
+
+
+
+
+
+
 
 //######################### Payment related api**********************
     // get one data for payment
-    app.get('/scholarships/payment/:scholarId', async(req,res)=>{
-      const id = req.params.scholarId;
-      const query = { _id: new ObjectId(id)}
-      const result = await scholarshipsCollection.findOne(query);
-      res.send(result)
-    })
+    // app.get('/scholarships/payment/:scholarId', async(req,res)=>{
+    //   const id = req.params.scholarId;
+    //   const query = { _id: new ObjectId(id)}
+    //   const result = await scholarshipsCollection.findOne(query);
+    //   res.send(result)
+    // })
     //##############Payment  checkout with stripe***************************
 app.post('/create-checkout-section', async (req, res) => {
   try {
@@ -195,7 +217,7 @@ app.post('/create-checkout-section', async (req, res) => {
         applicationId: paymentInfo.applicationId,
         userEmail: paymentInfo.userEmail,
         universityName: paymentInfo.universityName,
-
+        status: paymentInfo.status
       },
       customer_email: paymentInfo.userEmail,
       mode: 'payment',
@@ -209,11 +231,18 @@ app.post('/create-checkout-section', async (req, res) => {
     res.status(500).send("Stripe checkout creation failed");
   }
 });
-////Payment success
+////Payment success and send data in DB
 app.patch('/payment-success', async(req,res)=>{
   const sessionId = req.query.session_id;
-
    const session = await stripe.checkout.sessions.retrieve(sessionId);
+//duplicate payment  handel
+  const transactionId = session.payment_intent;
+  const query = {transactionId: transactionId}
+  const paymentExist = await paymentsCollection.findOne(query);
+  if(paymentExist){
+    return res.send(paymentExist)
+  }
+
 
    if(session.payment_status === 'paid'){ 
     const trackingId = generateTrackingId()
@@ -239,7 +268,8 @@ app.patch('/payment-success', async(req,res)=>{
       paymentStatus: session.payment_status,
       paidAt: new Date(),
       trackingId: trackingId,
-      universityName: session.metadata.universityName
+      universityName: session.metadata.universityName,
+      status: session.metadata.status
     }
           
    if(session.payment_status === 'paid'){ 
@@ -254,14 +284,65 @@ app.patch('/payment-success', async(req,res)=>{
         scholarshipName: session.metadata.scholarshipName,
         universityName: session.metadata.universityName,
         amount: session.amount_total/100,
-
       })
    }
    }
 
 res.send({success: false});
 });
+////Payment *****cancel**** and send data in DB
+app.patch('/payment-cancel', async(req,res)=>{
+  const sessionId = req.query.session_id;
+   const session = await stripe.checkout.sessions.retrieve(sessionId);
+//duplicate payment  handel
+  const transactionId = session.payment_intent;
+  const exist = {transactionId: transactionId}
+  const paymentExist = await paymentsCollection.findOne(exist);
+  if(paymentExist){
+    return res.send(paymentExist)
+  }
 
+    const trackingId = generateTrackingId()
+    const id = session.metadata.applicationId;
+    const query = { _id: new ObjectId(id)};
+    const update ={
+      $set:{
+        trackingId: trackingId
+      }
+    }
+    const result = await applicationsCollection.updateOne(query, update);
+    const payment = {
+      amount: session.amount_total/100,
+      currency: session.currency,
+      customerEmail: session.customer_email || session.metadata.userEmail || "example@get.com",
+      scholarshipName: session.metadata.scholarshipName,
+      applicationId: session.metadata.applicationId,
+      transactionId: session.payment_intent,
+      paymentStatus: session.payment_status,
+      paidAt: new Date(),
+      trackingId: trackingId,
+      universityName: session.metadata.universityName,
+      status: session.metadata.status,
+      paymentStatus: session.payment_status === "paid" ? "paid" : "unpaid",
+    }
+  
+      const paymentResult = await paymentsCollection.insertOne(payment);
+   
+      return res.send({
+        modifyScholar: result,
+        paymentInfo: paymentResult,
+        success:true,
+        transactionId: session.payment_intent,
+        trackingId: trackingId,
+        scholarshipName: session.metadata.scholarshipName,
+        universityName: session.metadata.universityName,
+        amount: session.amount_total/100,
+      })
+
+   
+
+res.send({success: false});
+});
 
 
 
