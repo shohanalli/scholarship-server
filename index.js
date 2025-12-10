@@ -4,13 +4,29 @@ const cors = require('cors');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express();
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-
+const crypto = require('crypto')
 const port = process.env.port || 3000
 const admin = require("firebase-admin");
 const serviceAccount = require("./scholarship.json");
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
+
+// generat id for traking
+function generateTrackingId() {
+  const prefix = "SS";  // your brand/company code
+  
+  // date as YYYYMMDD
+  const date = new Date()
+    .toISOString()
+    .slice(0,10)
+    .replace(/-/g, "");
+
+  // secure random string (Base36)
+  const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+  return `${prefix}-${date}-${random}`;
+}
 
 //middleware
 app.use(express.json());
@@ -119,12 +135,10 @@ async function run() {
 
 //######################Applications Collection related api ******************
 
-//Applications and payment collection send data in database&&&&&
+//Applications collection send data in database&&&&&
 app.post('/applications', async(req,res)=>{
   try{
     const applicationData = req.body;
-    const applicationId = new ObjectId();
-    applicationData.applicationId = applicationId.toString();
     //application collection data save to db
     const applicationResult = await applicationsCollection.insertOne(applicationData);
     // payment collection save to payment
@@ -178,13 +192,15 @@ app.post('/create-checkout-section', async (req, res) => {
       ],
       metadata: {
         scholarshipName: paymentInfo.scholarshipName,
-        scholarshipId: paymentInfo.scholarshipId,
+        applicationId: paymentInfo.applicationId,
         userEmail: paymentInfo.userEmail,
+        universityName: paymentInfo.universityName,
+
       },
       customer_email: paymentInfo.userEmail,
       mode: 'payment',
     success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancel`,
+    cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancel?session_id={CHECKOUT_SESSION_ID}`,
     });
 
     res.send({ url: session.url });
@@ -196,40 +212,55 @@ app.post('/create-checkout-section', async (req, res) => {
 ////Payment success
 app.patch('/payment-success', async(req,res)=>{
   const sessionId = req.query.session_id;
+
    const session = await stripe.checkout.sessions.retrieve(sessionId);
-  //  console.log(session)
- 
-   const trackingId = session.metadata.tracking;
+
    if(session.payment_status === 'paid'){ 
-    const id = session.metadata.parcelId;
-    const query = { _id: new ObjectId(id)}
+    const trackingId = generateTrackingId()
+    const id = session.metadata.applicationId;
+
+    const query = { _id: new ObjectId(id)};
+
     const update ={
       $set:{
         paymentStatus: 'paid',
+        trackingId: trackingId
       }
     }
-    const result = await parcelCollection.updateOne(query, update)
+    const result = await applicationsCollection.updateOne(query, update);
+
     const payment = {
       amount: session.amount_total/100,
       currency: session.currency,
-      customerEmail: session.customer_email || session.metadata.senderEmail || "example@get.com",
-      parcelName: session.metadata.parcelName,
-      parcelId: session.metadata.parcelId,
+      customerEmail: session.customer_email || session.metadata.userEmail || "example@get.com",
+      scholarshipName: session.metadata.scholarshipName,
+      applicationId: session.metadata.applicationId,
       transactionId: session.payment_intent,
       paymentStatus: session.payment_status,
       paidAt: new Date(),
-      trackingId: trackingId
-      
+      trackingId: trackingId,
+      universityName: session.metadata.universityName
     }
-      
-      
+          
+   if(session.payment_status === 'paid'){ 
+      const paymentResult = await paymentsCollection.insertOne(payment);
+   
+      return res.send({
+        modifyScholar: result,
+        paymentInfo: paymentResult,
+        success:true,
+        transactionId: session.payment_intent,
+        trackingId: trackingId,
+        scholarshipName: session.metadata.scholarshipName,
+        universityName: session.metadata.universityName,
+        amount: session.amount_total/100,
 
-    
-
+      })
+   }
    }
 
-  return res.send({success: false})
-})
+res.send({success: false});
+});
 
 
 
