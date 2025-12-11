@@ -162,6 +162,7 @@ app.post('/applications', async(req,res)=>{
       };
 });
 
+
 ///create application get api 
 app.get('/applications', async(req, res)=>{
   const query = {}
@@ -172,7 +173,24 @@ app.get('/applications', async(req, res)=>{
   const result = await applicationsCollection.find(query).sort({applicationDate: -1}).toArray();
   res.send(result);
 })
-
+// get application for application details
+app.get('/applications/:id', async(req,res)=>{
+  try{
+    const id = req.params.id;
+    const query = {_id: new ObjectId(id)};
+    const result = await applicationsCollection.findOne(query);
+    res.send(result);
+  }catch(err){
+    res.send('something wrong application details api')
+  }
+})
+//delete application data
+app.delete('/application/:id', async(req,res)=>{
+  const id = req.params.id;
+  const query = {_id: new ObjectId(id)};
+  const result = await applicationsCollection.deleteOne(query);
+  res.send(result);
+})
 
 
 
@@ -223,6 +241,7 @@ app.post('/create-checkout-section', async (req, res) => {
       mode: 'payment',
     success_url: `${process.env.SITE_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${process.env.SITE_DOMAIN}/dashboard/payment-cancel?session_id={CHECKOUT_SESSION_ID}`,
+    
     });
 
     res.send({ url: session.url });
@@ -237,14 +256,18 @@ app.patch('/payment-success', async(req,res)=>{
    const session = await stripe.checkout.sessions.retrieve(sessionId);
 //duplicate payment  handel
   const transactionId = session.payment_intent;
-  const query = {transactionId: transactionId}
-  const paymentExist = await paymentsCollection.findOne(query);
-  if(paymentExist){
-    return res.send(paymentExist)
-  }
+const paymentExist = await paymentsCollection.findOne({ transactionId });
+if (paymentExist) {
+  return res.send({
+    success: false,
+    message: "Payment already processed",
+    paymentInfo: paymentExist
+  });
+}
+    if (session.payment_status !== "paid") {
+      return res.send({ success: false, message: "Payment not completed" });
+    }
 
-
-   if(session.payment_status === 'paid'){ 
     const trackingId = generateTrackingId()
     const id = session.metadata.applicationId;
 
@@ -270,11 +293,8 @@ app.patch('/payment-success', async(req,res)=>{
       trackingId: trackingId,
       universityName: session.metadata.universityName,
       status: session.metadata.status
-    }
-          
-   if(session.payment_status === 'paid'){ 
-      const paymentResult = await paymentsCollection.insertOne(payment);
-   
+    }         
+      const paymentResult = await paymentsCollection.insertOne(payment);   
       return res.send({
         modifyScholar: result,
         paymentInfo: paymentResult,
@@ -285,8 +305,8 @@ app.patch('/payment-success', async(req,res)=>{
         universityName: session.metadata.universityName,
         amount: session.amount_total/100,
       })
-   }
-   }
+   
+   
 
 res.send({success: false});
 });
@@ -294,36 +314,35 @@ res.send({success: false});
 app.patch('/payment-cancel', async(req,res)=>{
   const sessionId = req.query.session_id;
    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const transactionId = session.payment_intent || sessionId;
 //duplicate payment  handel
-  const transactionId = session.payment_intent;
-  const exist = {transactionId: transactionId}
-  const paymentExist = await paymentsCollection.findOne(exist);
-  if(paymentExist){
-    return res.send(paymentExist)
-  }
+    const paymentExist = await paymentsCollection.findOne({ transactionId, applicationId: session.metadata.applicationId});
+    if(paymentExist){
+      return res.send(paymentExist);
+    }
 
     const trackingId = generateTrackingId()
-    const id = session.metadata.applicationId;
-    const query = { _id: new ObjectId(id)};
-    const update ={
-      $set:{
-        trackingId: trackingId
-      }
-    }
-    const result = await applicationsCollection.updateOne(query, update);
+    const applicationId = session.metadata.applicationId;
+    // Update application - trackingId only
+    const result = await applicationsCollection.updateOne(
+      { _id: new ObjectId(applicationId)},
+      { $set: { trackingId } }
+    );
+
+
+    
     const payment = {
       amount: session.amount_total/100,
       currency: session.currency,
       customerEmail: session.customer_email || session.metadata.userEmail || "example@get.com",
       scholarshipName: session.metadata.scholarshipName,
       applicationId: session.metadata.applicationId,
-      transactionId: session.payment_intent,
-      paymentStatus: session.payment_status,
+      transactionId,
       paidAt: new Date(),
       trackingId: trackingId,
       universityName: session.metadata.universityName,
       status: session.metadata.status,
-      paymentStatus: session.payment_status === "paid" ? "paid" : "unpaid",
+      paymentStatus: "unpaid",
     }
   
       const paymentResult = await paymentsCollection.insertOne(payment);
@@ -332,7 +351,7 @@ app.patch('/payment-cancel', async(req,res)=>{
         modifyScholar: result,
         paymentInfo: paymentResult,
         success:true,
-        transactionId: session.payment_intent,
+        transactionId,
         trackingId: trackingId,
         scholarshipName: session.metadata.scholarshipName,
         universityName: session.metadata.universityName,
