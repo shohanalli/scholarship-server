@@ -69,8 +69,9 @@ async function run() {
     const db = client.db('ScholarStream');
     const scholarshipsCollection = db.collection('scholarships');
     const usersCollection = db.collection('users');
-    const applicationsCollection = db.collection('applications')
-    const paymentsCollection = db.collection('payments')
+    const applicationsCollection = db.collection('applications');
+    const paymentsCollection = db.collection('payments');
+    const reviewCollection = db.collection('reviews')
 
     //######################user related api ******************
     //send user data mongodb with fairbase
@@ -362,7 +363,17 @@ app.patch('/payment-cancel', async(req,res)=>{
 
 res.send({success: false});
 });
+//////######################reviewCollection related work *************************
+app.post('/reviews', async(req,res)=>{
+  try{
+  const reviewsData = req.body;
+  const result = await reviewCollection.insertOne(reviewsData);
+  res.send (result)
+  }catch(err){
+    console.log(err)
+  }
 
+})
 
 
 
