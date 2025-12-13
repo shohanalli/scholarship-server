@@ -357,26 +357,56 @@ app.patch('/payment-cancel', async(req,res)=>{
         scholarshipName: session.metadata.scholarshipName,
         universityName: session.metadata.universityName,
         amount: session.amount_total/100,
-      })
+      });
 
    
 
 res.send({success: false});
 });
-//////######################reviewCollection related work *************************
+//////###################### reviewCollection related work *************************
 app.post('/reviews', async(req,res)=>{
   try{
   const reviewsData = req.body;
   const result = await reviewCollection.insertOne(reviewsData);
   res.send (result)
   }catch(err){
-    console.log(err)
+    console.log(err);
   }
+});
+app.get('/reviews', async(req,res)=>{
+  try{
+   const query = {};
+   const { email } = req.query;
+    if(email){
+      query.userEmail = email
+    }
+    const result = await reviewCollection.find(query).sort({ reviewDate: -1 }).toArray();
+    res.send(result);
 
+  }catch(error){
+    console.log('reviews get api problem', error);
+  }
+});
+//delete Reviews data
+app.delete('/reviews/:id', async(req,res)=>{
+  const id = req.params.id;
+  const query = {_id: new ObjectId(id)};
+  const result = await reviewCollection.deleteOne(query);
+  res.send(result);
 })
-
-
-
+// upadte  review for student
+app.patch('/reviews/:id', async (req, res) => {
+  const { reviewComment, rating } = req.body;
+  const query = { _id: new ObjectId(req.params.id)}
+  const updateReview = {
+     $set: {
+       reviewComment,
+        rating 
+      }
+  }
+  const result = await reviewCollection.updateOne(query, updateReview);
+  res.send(result);
+});
 
 
 
