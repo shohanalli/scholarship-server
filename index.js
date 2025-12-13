@@ -96,14 +96,26 @@ async function run() {
       res.send({role : user?.role || 'student'})
 
     });
-
-
-
-
-
-
+    // find user for user profile
+app.get('/users/:email', async(req,res)=>{
+try{
+    const email = req.params.email;
+  const query = {email};
+  const user = await usersCollection.find(query).toArray();
+  res.send (user)
+}
+catch(error){
+console.log("line number 98", error)
+}
+});
 
 //######################Scholarship related api ******************
+// send data in databes form admin dashboard
+app.post('/scholarships', async(req, res)=>{
+  const scholarInfo = req.body;
+  const result = await scholarshipsCollection.insertOne(scholarInfo);
+res.send (result);
+})
 
  //schollerShip Api for home and all Scholarship page
     app.get('/scholarships', async(req,res)=>{
@@ -173,7 +185,7 @@ app.get('/applications', async(req, res)=>{
   }
   const result = await applicationsCollection.find(query).sort({applicationDate: -1}).toArray();
   res.send(result);
-})
+});
 // get application for application details
 app.get('/applications/:id', async(req,res)=>{
   try{
@@ -184,22 +196,14 @@ app.get('/applications/:id', async(req,res)=>{
   }catch(err){
     res.send('something wrong application details api')
   }
-})
+});
 //delete application data
 app.delete('/application/:id', async(req,res)=>{
   const id = req.params.id;
   const query = {_id: new ObjectId(id)};
   const result = await applicationsCollection.deleteOne(query);
   res.send(result);
-})
-
-
-
-
-
-
-
-
+});
 
 
 
