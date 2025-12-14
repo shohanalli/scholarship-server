@@ -88,6 +88,11 @@ async function run() {
       res.send(result);
 
     });
+    // get all users api for admin dashboard 
+    app.get('/users', async(req,res)=>{
+      const result = await usersCollection.find().toArray();
+      res.send(result);
+    })
     //find user role with email
     app.get('/users/:email/role', async(req, res)=>{
       const email = req.params.email
@@ -108,6 +113,28 @@ catch(error){
 console.log("line number 98", error)
 }
 });
+//update users collection data
+app.patch('/users/:id', async(req, res)=>{
+  const id = req.params.id;
+  const query = { _id: new ObjectId(id)};
+  const updateData = req.body;
+  const updateRole = {
+    $set : updateData
+  }
+  const result = await usersCollection.updateOne(query, updateRole);
+  res.send(result);
+});
+// delete a user in database
+app.delete('/users/:id', async (req, res)=>{
+const query = { _id: new ObjectId(req.params.id)}
+const result = await usersCollection.deleteOne(query);
+res.send (result); 
+});
+
+
+
+
+
 
 //######################Scholarship related api ******************
 // send data in databes form admin dashboard
@@ -155,7 +182,13 @@ app.patch('/scholarships/:id', async(req, res)=>{
     res.send('something wrong update scholar api', error);
   }
 });
-
+// delete a scholar in database
+app.delete('/scholarships/:id', async(req,res)=>{
+  const id = req.params.id;
+  const query = { _id: new ObjectId(id)}
+  const result = await scholarshipsCollection.deleteOne(query);
+  res.send(result);
+})
 
 
 
@@ -426,6 +459,15 @@ app.patch('/reviews/:id', async (req, res) => {
   }
   const result = await reviewCollection.updateOne(query, updateReview);
   res.send(result);
+});
+//all review for moderator
+app.get('/all-reviews', async (req,res)=>{
+  try{
+    const result = await reviewCollection.find().toArray()
+    res.send(result);
+  }catch(error){
+    console.log('error form all-review Api')
+  }
 });
 
 
