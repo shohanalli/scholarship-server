@@ -138,7 +138,23 @@ res.send (result);
         res.send('Something wrong scholarship details Api');
       }
     });
-
+// update scholar  update database 
+app.patch('/scholarships/:id', async(req, res)=>{
+  try{
+    const id = req.params.id;
+    const updateData = req.body;
+    const query = { _id: new ObjectId(id)} ;
+    const updateDoc = {
+      $set:
+        updateData
+      
+    }
+    const result = await scholarshipsCollection.updateOne( query,updateDoc);
+    res.send(result);
+  }catch(error){
+    res.send('something wrong update scholar api', error);
+  }
+});
 
 
 
