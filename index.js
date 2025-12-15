@@ -166,20 +166,22 @@ res.send (result);
       }
     });
 // update scholar  update database 
-app.patch('/scholarships/:id', async(req, res)=>{
-  try{
+app.patch('/scholarships/:id', async (req, res) => {
+  try {
     const id = req.params.id;
-    const updateData = req.body;
-    const query = { _id: new ObjectId(id)} ;
-    const updateDoc = {
-      $set:
-        updateData
-      
-    }
-    const result = await scholarshipsCollection.updateOne( query,updateDoc);
+    const updateData = req.body.updateData || req.body;
+
+    Object.keys(updateData).forEach(
+      key => updateData[key] === undefined && delete updateData[key]
+    );
+    const result = await scholarshipsCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updateData }
+    );
     res.send(result);
-  }catch(error){
-    res.send('something wrong update scholar api', error);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ message: "Update failed" });
   }
 });
 // delete a scholar in database
@@ -189,7 +191,12 @@ app.delete('/scholarships/:id', async(req,res)=>{
   const result = await scholarshipsCollection.deleteOne(query);
   res.send(result);
 })
-
+//for scholarship & application modal moderator
+app.get("/scholarships/:id/xyz", async (req, res) => {
+    const { id } = req.params;
+    const scholarship = await scholarshipsCollection.findOne({ _id: new ObjectId(id) });
+    res.send(scholarship);
+});
 
 
 
@@ -253,18 +260,24 @@ app.delete('/application/:id', async(req,res)=>{
   const result = await applicationsCollection.deleteOne(query);
   res.send(result);
 });
+//application and scholarship modal for moderator
+app.get("/applications/:id/xyz", async (req, res) => {
+    const { id } = req.params;
+    const application = await applicationsCollection.findOne({ _id: new ObjectId(id) });
+    res.send(application);
 
-
+});
+//update feedback in application
+app.patch("/applications/:id", async (req, res)=>{
+  const id = req.params.id;
+  const query = { _id: new ObjectId(id)};
+  const updateData = req.body;
+  const result = await applicationsCollection.updateOne(query, { $set: updateData });
+  res.send(result);
+})
 
 
 //######################### Payment related api**********************
-    // get one data for payment
-    // app.get('/scholarships/payment/:scholarId', async(req,res)=>{
-    //   const id = req.params.scholarId;
-    //   const query = { _id: new ObjectId(id)}
-    //   const result = await scholarshipsCollection.findOne(query);
-    //   res.send(result)
-    // })
     //##############Payment  checkout with stripe***************************
 app.post('/create-checkout-section', async (req, res) => {
   try {
@@ -469,6 +482,21 @@ app.get('/all-reviews', async (req,res)=>{
     console.log('error form all-review Api')
   }
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
