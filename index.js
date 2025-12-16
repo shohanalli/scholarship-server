@@ -147,7 +147,28 @@ res.send (result);
  //schollerShip Api for home and all Scholarship page
     app.get('/scholarships', async(req,res)=>{
       try{
-        const result = await scholarshipsCollection.find().sort({ApplicationFees: 1 , PostDate: -1 }).toArray();
+        
+        const { sortBy = "PostDate", order = "desc"} = req.query;
+        const sortObj = {};
+    if (sortBy === "ApplicationFees") {
+      sortObj.ApplicationFees = order === "asc" ? 1 : -1;
+    } else if (sortBy === "PostDate") {
+      sortObj.PostDate = order === "desc" ? -1 : 1;
+    }
+        const result = await scholarshipsCollection.find().sort(sortObj).toArray();
+        res.send(result)
+      }catch(err){
+        res.send('Something wrong scholarship Api');
+      }
+    });
+
+
+    app.get('/scholarships/all', async(req,res)=>{
+      try{
+        const { category} = req.query;
+        const filter = {};
+    if (category) filter.Degree = category;
+        const result = await scholarshipsCollection.find(filter).toArray();
         res.send(result)
       }catch(err){
         res.send('Something wrong scholarship Api');
@@ -456,7 +477,7 @@ app.get('/reviews', async(req,res)=>{
 //delete Reviews data
 app.delete('/reviews/:id', async(req,res)=>{
   const id = req.params.id;
-  const query = {_id: new ObjectId(id)};
+  const query = { _id: new ObjectId(id)};
   const result = await reviewCollection.deleteOne(query);
   res.send(result);
 })
