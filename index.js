@@ -8,6 +8,7 @@ const crypto = require('crypto')
 const port = process.env.port || 3000
 const admin = require("firebase-admin");
 const serviceAccount = require("./scholarship.json");
+const { pipeline } = require('stream');
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
@@ -52,6 +53,7 @@ catch (err){
 }
 
 
+
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0.11tuu0x.mongodb.net/?appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -73,6 +75,34 @@ async function run() {
     const paymentsCollection = db.collection('payments');
     const reviewCollection = db.collection('reviews')
 
+    //middleware for moderator verify
+    const verifyModerator = async(req, res, next) =>{
+      const email = req.decoded_email
+      const query = {email}
+      const user = await usersCollection.findOne(query)
+      if(!user || user.role !== 'moderator'){
+        return res.status(403).send({message: 'forbidden access'})
+      }
+      next();
+    };
+    //middleware for moderator verify
+    const verifyAdmin = async(req, res, next) =>{
+      const email = req.decoded_email
+      const query = {email}
+      const user = await usersCollection.findOne(query)
+      if(!user || user.role !== 'admin'){
+        return res.status(403).send({message: 'forbidden access'})
+      }
+      next();
+    };
+
+
+
+
+
+
+
+
     //######################user related api ******************
     //send user data mongodb with fairbase
     app.post('/users', async(req,res)=>{
@@ -89,7 +119,7 @@ async function run() {
 
     });
     // get all users api for admin dashboard 
-    app.get('/users', async(req,res)=>{
+    app.get('/users', verifyToken, verifyAdmin, async(req,res)=>{
       const result = await usersCollection.find().toArray();
       res.send(result);
     })
@@ -110,7 +140,7 @@ try{
   res.send (user)
 }
 catch(error){
-console.log("line number 98", error)
+console.log("find user for user profile", error)
 }
 });
 //update users collection data
@@ -141,6 +171,11 @@ res.send (result);
 app.post('/scholarships', async(req, res)=>{
   const scholarInfo = req.body;
   const result = await scholarshipsCollection.insertOne(scholarInfo);
+res.send (result);
+})
+// send data in databes form admin dashboard
+app.get('/scholarships/admin', verifyToken, verifyAdmin,  async(req, res)=>{
+  const result = await scholarshipsCollection.find().toArray();
 res.send (result);
 })
 
@@ -254,13 +289,21 @@ app.post('/applications', async(req,res)=>{
 
 
 ///create application get api 
-app.get('/applications', async(req, res)=>{
+app.get('/applications', verifyToken, async(req, res)=>{
   const query = {}
   const { email } = req.query;
   if(email){
     query.userEmail = email;
+    //check email with token
+    if(email !== req.decoded_email){
+      return res.status(403).send({message: 'Forbidden access'})
+    }
   }
   const result = await applicationsCollection.find(query).sort({applicationDate: -1}).toArray();
+  res.send(result);
+});
+app.get('/moderator/applications', verifyToken, verifyModerator, async(req,res) => {
+  const result = await applicationsCollection.find({}).sort({applicationDate: -1}).toArray();
   res.send(result);
 });
 // get application for application details
@@ -460,12 +503,15 @@ app.post('/reviews', async(req,res)=>{
     console.log(err);
   }
 });
-app.get('/reviews', async(req,res)=>{
+app.get('/reviews', verifyToken, async(req,res)=>{
   try{
    const query = {};
    const { email } = req.query;
     if(email){
-      query.userEmail = email
+      query.userEmail = email;
+      if(email !==req.decoded_email){
+        return res.status(403).send({message: 'Forbidden access'})
+      }
     }
     const result = await reviewCollection.find(query).sort({ reviewDate: -1 }).toArray();
     res.send(result);
@@ -495,7 +541,7 @@ app.patch('/reviews/:id', async (req, res) => {
   res.send(result);
 });
 //all review for moderator
-app.get('/all-reviews', async (req,res)=>{
+app.get('/all-reviews', verifyToken, verifyModerator, async (req,res)=>{
   try{
     const result = await reviewCollection.find().toArray()
     res.send(result);
@@ -503,7 +549,74 @@ app.get('/all-reviews', async (req,res)=>{
     console.log('error form all-review Api')
   }
 });
+// create pipeline
+app.get('/dashboard-status', async (req, res)=>{
+  try{
+    const result = await usersCollection.aggregate([
 
+      {
+        $facet: {
+          totalUser:[
+            { $count: "count"}
+          ],
+          totalScholarFree: [
+            {
+              $lookup: {
+                from: "payments",
+                pipeline: [
+                  {
+                    $group: {
+                      _id: null,
+                      totalAmount: { $sum: { $toInt: "$amount"} }
+                    }
+                  }
+                ],
+                as: "amount"
+              }
+            }
+          ],
+          totalScholarships: [
+            {
+              $lookup: {
+                from: "scholarships",
+                pipeline: [
+                  {$count: 'count'}
+                ],
+                as: 'count'
+              }
+            }
+          ]
+
+        }
+      }
+    ]).toArray();
+    res.send({
+      totalUser: result[0]?.totalUser[0]?.count || 0, 
+      totalScholarFree: result[0]?.totalScholarFree[0]?.amount[0]?.totalAmount || 0,
+      totalScholarships: result[0]?.totalScholarships[0]?.count[0]?.count || 0,
+    })
+// Scholarship Category for chart
+    app.get('/scholarship-category', async(req,res)=>{
+      const pipeline = [
+          {
+            $group:{    
+              _id: '$scholarshipCategory',
+             count: { $sum: 1}
+            }
+          }
+      ]
+      const result = await applicationsCollection.aggregate(pipeline).toArray();
+      res.send(result)
+    })
+
+
+
+  }catch(err){
+    console.log('pipeline error', err)
+  }
+
+
+});
 
 
 
