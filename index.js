@@ -7,7 +7,9 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const crypto = require('crypto')
 const port = process.env.port || 3000
 const admin = require("firebase-admin");
-const serviceAccount = require("./scholarship.json");
+// const serviceAccount = require("./scholarship.json");
+const decoded = Buffer.from(process.env.FV_SERVICE_KEY, 'base64').toString('utf8')
+const serviceAccount = JSON.parse(decoded);
 const { pipeline } = require('stream');
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
@@ -67,7 +69,7 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
     const db = client.db('ScholarStream');
     const scholarshipsCollection = db.collection('scholarships');
     const usersCollection = db.collection('users');
@@ -541,7 +543,7 @@ app.patch('/reviews/:id', async (req, res) => {
   res.send(result);
 });
 //all review for moderator
-app.get('/all-reviews', verifyToken, verifyModerator, async (req,res)=>{
+app.get('/all-reviews', verifyToken, async (req,res)=>{
   try{
     const result = await reviewCollection.find().toArray()
     res.send(result);
@@ -635,8 +637,8 @@ app.get('/dashboard-status', async (req, res)=>{
 
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log("ScholarStream connected to MongoDB!");
+    // await client.db("admin").command({ ping: 1 });
+    // console.log("ScholarStream connected to MongoDB!");
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
